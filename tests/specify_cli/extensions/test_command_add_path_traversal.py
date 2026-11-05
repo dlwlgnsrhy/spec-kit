@@ -261,6 +261,7 @@ def test_url_install_succeeds_without_dir_fd_support(
             description="",
             warnings=[],
             commands=[],
+            config=[],
         )
 
     monkeypatch.setattr(os, "supports_dir_fd", set())
@@ -323,6 +324,7 @@ def test_url_install_writes_and_cleans_up_secure_download(
             description="",
             warnings=[],
             commands=[],
+            config=[],
         )
 
     monkeypatch.setattr(typer, "confirm", lambda *args, **kwargs: True)

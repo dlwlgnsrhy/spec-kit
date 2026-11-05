@@ -68,6 +68,49 @@ class TestExtensionAddCLI:
         assert set(agent_dir.rglob("*")) == before
         assert ExtensionRegistry(project_dir / ".specify/extensions").get("test-ext") is None
 
+    @staticmethod
+    def _add_dev(extension_dir, project_dir):
+        with patch.object(Path, "cwd", return_value=project_dir):
+            result = CliRunner().invoke(app, ["extension", "add", "--dev", str(extension_dir)])
+        assert result.exit_code == 0, result.output
+        return strip_ansi(result.output)
+
+    @staticmethod
+    def _declare_config(extension_dir, template="config-template.yml", create=True):
+        manifest_path = extension_dir / "extension.yml"
+        data = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
+        data["provides"]["config"] = [
+            {"name": "test-ext-config.yml", "template": template, "description": "Test config"}
+        ]
+        manifest_path.write_text(yaml.safe_dump(data), encoding="utf-8")
+        if create:
+            (extension_dir / template).write_text("setting: value\n", encoding="utf-8")
+
+    def test_add_dev_without_config_section_does_not_warn(self, extension_dir, project_dir):
+        """An extension that declares no provides.config has nothing to configure."""
+        output = self._add_dev(extension_dir, project_dir)
+
+        assert "Configuration may be required" not in output, output
+
+    def test_add_dev_with_scaffolded_config_does_not_warn(self, extension_dir, project_dir):
+        """Deployed config templates already answer the configuration question."""
+        self._declare_config(extension_dir)
+
+        output = self._add_dev(extension_dir, project_dir)
+
+        assert "Config scaffolded" in output, output
+        assert "Configuration may be required" not in output, output
+        assert (project_dir / ".specify/extensions/test-ext/test-ext-config.yml").is_file()
+
+    def test_add_dev_with_unscaffolded_config_still_warns(self, extension_dir, project_dir):
+        """A declared config template that fails to scaffold must keep the warning."""
+        self._declare_config(extension_dir, template="missing-template.yml", create=False)
+
+        output = self._add_dev(extension_dir, project_dir)
+
+        assert "Config templates not scaffolded" in output, output
+        assert "Configuration may be required" in output, output
+
     def test_add_dev_links_copilot_agent_when_supported(
         self, extension_dir, project_dir, temp_dir
     ):
@@ -342,6 +385,7 @@ class TestExtensionAddCLI:
                 description="catalog extension",
                 warnings=[],
                 commands=[],
+                config=[],
             )
 
         with patch.object(Path, "cwd", return_value=project_dir), \
@@ -712,6 +756,9 @@ class TestExtensionAddCLI:
                 description="Test extension",
                 warnings=[],
                 commands=[],
+                # Declares config that is never scaffolded, so the
+                # "Check: .specify/extensions/<id>/" hint is printed.
+                config=[{"name": "bad-config.yml", "template": "config-template.yml"}],
                 hooks=[],
             )
 
@@ -887,7 +934,7 @@ class TestExtensionAddCLI:
             seen["url"] = from_url
             return SimpleNamespace(
                 id="x", name="X", version="1.0.0", description="",
-                warnings=[], commands=[], hooks=[],
+                warnings=[], commands=[], config=[], hooks=[],
             )
 
         with patch.object(Path, "cwd", return_value=project_dir), \
@@ -980,7 +1027,7 @@ class TestExtensionAddCLI:
             archive_file=None,
         ):
             return SimpleNamespace(
-                id="x", name="X", version="1.0.0", description="", warnings=[], commands=[], hooks=[]
+                id="x", name="X", version="1.0.0", description="", warnings=[], commands=[], config=[], hooks=[]
             )
 
         runner = CliRunner()
@@ -1078,6 +1125,7 @@ class TestExtensionAddCLI:
                 description="Test extension",
                 warnings=[],
                 commands=[],
+                config=[],
                 hooks=[],
             )
 
